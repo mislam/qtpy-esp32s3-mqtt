@@ -7,7 +7,7 @@ import adafruit_minimqtt.adafruit_minimqtt as minimqtt
 from led import *
 
 
-class _MQTT:
+class _Mqtt:
     def __init__(self) -> None:
         self._config = {
             "WIFI_SSID": os.getenv("CIRCUITPY_WIFI_SSID"),
@@ -23,6 +23,7 @@ class _MQTT:
         self._pool: socketpool.SocketPool = None
         self._client: minimqtt.MQTT = None
         self._subscribed = False
+        self._callbacks = {}
 
     def connect(self):
         self._connect_wifi()
@@ -69,9 +70,9 @@ class _MQTT:
         )
 
         # Set callback methods
-        self._client.on_connect = self.on_connect
-        self._client.on_disconnect = self.on_disconnect
-        self._client.on_message = self.on_message
+        self._client.on_connect = self._on_connect
+        self._client.on_disconnect = self._on_disconnect
+        self._client.on_message = self._on_message
 
         print("Connecting to MQTT broker ", end="")
         stamp = time.monotonic() - self._RECONNECT_INTERVAL
@@ -87,27 +88,41 @@ class _MQTT:
                 except Exception:
                     pass
 
-    def on_connect(self, client, userdata, flags, rc):
+    def _on_connect(self, client, userdata, flags, rc):
         # This function will be called when the client is connected
         # successfully to the broker.
-        led.on(GREEN, wait=1)
         print(" Connected ✔")
-        # Subscribe to all changes on the topic.
+        # Subscribe to the topic if not subscribed already.
         if not self._subscribed:
-            client.subscribe(self._config["MQTT_TOPIC"] + "/#")
+            topic = self._config["MQTT_TOPIC"] + "/#"
+            client.subscribe(topic)
             self._subscribed = True
+            print("Subscribed to MQTT topic " + topic)
 
-    def on_disconnect(self, client, userdata, rc):
+    def _on_disconnect(self, client, userdata, rc):
         # This method is called when the client is disconnected
         print("Disconnected from MQTT Broker!")
 
-    def on_message(self, client, topic, message):
-        # This method callled when a client's subscribed feed has a new
-        print(f"New message on topic {topic}: {message}")
+    def _on_message(self, client, topic, message):
+        # This method is called when the client's subscribed feed has a new message
+        a = topic.split(self._config["MQTT_TOPIC"] + "/")
+        if len(a) < 2:
+            return
+        subtopic = a[1]
+        # If there is a callback for the subtopic (registered using the `on` method)
+        if subtopic in self._callbacks:
+            self._callbacks[subtopic](message)
 
     def loop(self):
         self._client.loop()
 
+    def on(self, subtopic: str, callback: callable):
+        # Register a callback for a subtopic
+        self._callbacks[subtopic] = callback
+        print(
+            "Registered a callback for " + self._config["MQTT_TOPIC"] + "/" + subtopic
+        )
+
 
 # Instantiate the singleton
-mqtt = _MQTT()
+mqtt = _Mqtt()

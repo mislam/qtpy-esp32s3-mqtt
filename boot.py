@@ -5,5 +5,4 @@
 # Once disabled, to mount the storage drive, press the RESET button and wait
 # until for yellow flashs after purple. Then immediately press the BOOT button.
 import storage
-
 storage.disable_usb_drive()
